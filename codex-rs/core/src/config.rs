@@ -310,6 +310,9 @@ pub fn write_global_mcp_servers(
         for (name, config) in servers {
             let mut entry = TomlTable::new();
             entry.set_implicit(false);
+            if let Some(preset) = &config.preset {
+                entry["preset"] = toml_edit::value(preset.clone());
+            }
             entry["command"] = toml_edit::value(config.command.clone());
 
             if !config.args.is_empty() {
@@ -1288,6 +1291,7 @@ exclude_slash_tmp = true
         servers.insert(
             "docs".to_string(),
             McpServerConfig {
+                preset: None,
                 command: "echo".to_string(),
                 args: vec!["hello".to_string()],
                 env: None,
@@ -1301,6 +1305,7 @@ exclude_slash_tmp = true
         let loaded = load_global_mcp_servers(codex_home.path())?;
         assert_eq!(loaded.len(), 1);
         let docs = loaded.get("docs").expect("docs entry");
+        assert!(docs.preset.is_none());
         assert_eq!(docs.command, "echo");
         assert_eq!(docs.args, vec!["hello".to_string()]);
         assert_eq!(docs.startup_timeout_sec, Some(Duration::from_secs(3)));

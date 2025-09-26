@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -13,6 +12,7 @@ use codex_core::config::find_codex_home;
 use codex_core::config::load_global_mcp_servers;
 use codex_core::config::write_global_mcp_servers;
 use codex_core::config_types::McpServerConfig;
+use codex_core::mcp_presets::find_mcp_server_preset;
 
 /// [experimental] Launch Codex as an MCP server or manage configured MCP servers.
 ///
@@ -71,12 +71,16 @@ pub struct AddArgs {
     /// Name for the MCP server configuration.
     pub name: String,
 
+    /// Use a built-in preset as the base configuration.
+    #[arg(long)]
+    pub preset: Option<String>,
+
     /// Environment variables to set when launching the server.
     #[arg(long, value_parser = parse_env_pair, value_name = "KEY=VALUE")]
     pub env: Vec<(String, String)>,
 
     /// Command to launch the MCP server.
-    #[arg(trailing_var_arg = true, num_args = 1..)]
+    #[arg(trailing_var_arg = true, num_args = 0..)]
     pub command: Vec<String>,
 }
 
@@ -120,39 +124,59 @@ fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Result<(
     // Validate any provided overrides even though they are not currently applied.
     config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
 
-    let AddArgs { name, env, command } = add_args;
+    let AddArgs {
+        name,
+        preset,
+        env,
+        command,
+    } = add_args;
 
     validate_server_name(&name)?;
 
-    let mut command_parts = command.into_iter();
-    let command_bin = command_parts
-        .next()
-        .ok_or_else(|| anyhow!("command is required"))?;
-    let command_args: Vec<String> = command_parts.collect();
+    let mut entry = if let Some(preset_id) = preset {
+        let preset = find_mcp_server_preset(&preset_id)
+            .ok_or_else(|| anyhow!("unknown MCP server preset '{preset_id}'"))?;
+        let mut cfg = preset.to_config();
+        cfg.preset = Some(preset_id);
+        cfg
+    } else {
+        McpServerConfig {
+            preset: None,
+            command: String::new(),
+            args: Vec::new(),
+            env: None,
+            startup_timeout_sec: None,
+            tool_timeout_sec: None,
+        }
+    };
 
-    let env_map = if env.is_empty() {
+    if !command.is_empty() {
+        let mut parts = command.into_iter();
+        if let Some(bin) = parts.next() {
+            entry.command = bin;
+            entry.args = parts.collect();
+        } else {
+            bail!("command is required unless --preset is provided");
+        }
+    } else if entry.command.is_empty() {
+        bail!("command is required unless --preset is provided");
+    }
+
+    let mut env_map = entry.env.take().unwrap_or_default();
+    for (key, value) in env {
+        env_map.insert(key, value);
+    }
+    entry.env = if env_map.is_empty() {
         None
     } else {
-        let mut map = HashMap::new();
-        for (key, value) in env {
-            map.insert(key, value);
-        }
-        Some(map)
+        Some(env_map)
     };
 
     let codex_home = find_codex_home().context("failed to resolve CODEX_HOME")?;
     let mut servers = load_global_mcp_servers(&codex_home)
         .with_context(|| format!("failed to load MCP servers from {}", codex_home.display()))?;
 
-    let new_entry = McpServerConfig {
-        command: command_bin,
-        args: command_args,
-        env: env_map,
-        startup_timeout_sec: None,
-        tool_timeout_sec: None,
-    };
-
-    servers.insert(name.clone(), new_entry);
+    servers.insert(name.clone(), entry);
 
     write_global_mcp_servers(&codex_home, &servers)
         .with_context(|| format!("failed to write MCP servers to {}", codex_home.display()))?;
@@ -208,6 +232,7 @@ fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Resul
                 });
                 serde_json::json!({
                     "name": name,
+                    "preset": cfg.preset,
                     "command": cfg.command,
                     "args": cfg.args,
                     "env": env,
@@ -230,7 +255,7 @@ fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Resul
         return Ok(());
     }
 
-    let mut rows: Vec<[String; 4]> = Vec::new();
+    let mut rows: Vec<[String; 5]> = Vec::new();
     for (name, cfg) in entries {
         let args = if cfg.args.is_empty() {
             "-".to_string()
@@ -251,11 +276,18 @@ fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Resul
                     .join(", ")
             }
         };
+        let preset = cfg.preset.clone().unwrap_or_else(|| "-".to_string());
 
-        rows.push([name.clone(), cfg.command.clone(), args, env]);
+        rows.push([name.clone(), preset, cfg.command.clone(), args, env]);
     }
 
-    let mut widths = ["Name".len(), "Command".len(), "Args".len(), "Env".len()];
+    let mut widths = [
+        "Name".len(),
+        "Preset".len(),
+        "Command".len(),
+        "Args".len(),
+        "Env".len(),
+    ];
     for row in &rows {
         for (i, cell) in row.iter().enumerate() {
             widths[i] = widths[i].max(cell.len());
@@ -263,28 +295,32 @@ fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Resul
     }
 
     println!(
-        "{:<name_w$}  {:<cmd_w$}  {:<args_w$}  {:<env_w$}",
+        "{:<name_w$}  {:<preset_w$}  {:<cmd_w$}  {:<args_w$}  {:<env_w$}",
         "Name",
+        "Preset",
         "Command",
         "Args",
         "Env",
         name_w = widths[0],
-        cmd_w = widths[1],
-        args_w = widths[2],
-        env_w = widths[3],
+        preset_w = widths[1],
+        cmd_w = widths[2],
+        args_w = widths[3],
+        env_w = widths[4],
     );
 
     for row in rows {
         println!(
-            "{:<name_w$}  {:<cmd_w$}  {:<args_w$}  {:<env_w$}",
+            "{:<name_w$}  {:<preset_w$}  {:<cmd_w$}  {:<args_w$}  {:<env_w$}",
             row[0],
             row[1],
             row[2],
             row[3],
+            row[4],
             name_w = widths[0],
-            cmd_w = widths[1],
-            args_w = widths[2],
-            env_w = widths[3],
+            preset_w = widths[1],
+            cmd_w = widths[2],
+            args_w = widths[3],
+            env_w = widths[4],
         );
     }
 
@@ -308,6 +344,7 @@ fn run_get(config_overrides: &CliConfigOverrides, get_args: GetArgs) -> Result<(
         });
         let output = serde_json::to_string_pretty(&serde_json::json!({
             "name": get_args.name,
+            "preset": server.preset,
             "command": server.command,
             "args": server.args,
             "env": env,
@@ -323,6 +360,7 @@ fn run_get(config_overrides: &CliConfigOverrides, get_args: GetArgs) -> Result<(
     }
 
     println!("{}", get_args.name);
+    println!("  preset: {}", server.preset.as_deref().unwrap_or("-"));
     println!("  command: {}", server.command);
     let args = if server.args.is_empty() {
         "-".to_string()

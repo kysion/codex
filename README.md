@@ -51,6 +51,30 @@ Each archive contains a single entry with the platform baked into the name (e.g.
 
 </details>
 
+
+### macOS auto-install (kysion build)
+
+To install this repository's enhanced Codex CLI (with built-in `chrome-devtools-mcp@latest` preset) on macOS, run:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/kysion/codex/main/scripts/install_codex.sh)"
+```
+
+The installer will:
+- ensure `node`, `npm`, `npx`, and `python3` are available (installing them via Homebrew if needed);
+- download or build the latest `codex` binary from this repository;
+- prompt for the browser to drive (`chrome` by default, or `edge`/custom) and update `~/.codex/config.toml` accordingly;
+- optionally capture `OPENAI_BASE_URL` / `OPENAI_API_KEY` into `~/.codex/env.sh` so you can `source` it later.
+
+After the script finishes, you can refresh your shell environment (if you saved env vars) and verify MCP tooling, e.g.:
+
+```bash
+source ~/.codex/env.sh   # 如配置了 env.sh
+codex --sandbox danger-full-access exec "请使用 chrome_devtools 工具打开 https://www.baidu.com 并截取整页截图。"
+```
+
+如果需要回滚，可运行 `scripts/restore_codex.sh` 选择备份恢复旧版本。
+
 ### Using Codex with your ChatGPT plan
 
 <p align="center">

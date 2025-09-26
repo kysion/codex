@@ -345,6 +345,8 @@ Defines the list of MCP servers that Codex can consult for tool use. Currently, 
 Each server may set `startup_timeout_sec` to adjust how long Codex waits for it to start and respond to a tools listing. The default is `10` seconds.
 Similarly, `tool_timeout_sec` limits how long individual tool calls may run (default: `60` seconds), and Codex will fall back to the default when this value is omitted.
 
+Codex ships with a small set of built-in presets that you can reference via the `preset` field. For example, `chrome_devtools` launches `npx chrome-devtools-mcp@latest --stdio` with relaxed startup/tool timeouts so that UI debugging flows have enough headroom. You can still override `command`, `args`, `env`, or the timeout fields when needed.
+
 This config option is comparable to how Claude and Cursor define `mcpServers` in their respective JSON config files, though because Codex uses TOML for its config language, the format is slightly different. For example, the following config in JSON:
 
 ```json
@@ -373,6 +375,12 @@ env = { "API_KEY" = "value" }
 startup_timeout_sec = 20
 # Optional: override the default 60s per-tool timeout
 tool_timeout_sec = 30
+
+# Use a built-in preset and optionally override fields
+[mcp_servers.chrome]
+preset = "chrome_devtools"
+# Example override: point to a pre-installed Chrome binary
+# env = { "CHROME_PATH" = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" }
 ```
 
 You can also manage these entries from the CLI [experimental]:
@@ -380,6 +388,8 @@ You can also manage these entries from the CLI [experimental]:
 ```shell
 # Add a server (env can be repeated; `--` separates the launcher command)
 codex mcp add docs -- docs-server --port 4000
+# Add Chrome DevTools preset (no command override needed)
+codex mcp add chrome --preset chrome_devtools
 
 # List configured servers (pretty table or JSON)
 codex mcp list
@@ -620,6 +630,7 @@ notifications = [ "agent-turn-complete", "approval-requested" ]
 | `notify` | array<string> | External program for notifications. |
 | `instructions` | string | Currently ignored; use `experimental_instructions_file` or `AGENTS.md`. |
 | `mcp_servers.<id>.command` | string | MCP server launcher command. |
+| `mcp_servers.<id>.preset` | string | Optional built-in preset id (e.g., `chrome_devtools`). When set, provides defaults that you can override. |
 | `mcp_servers.<id>.args` | array<string> | MCP server args. |
 | `mcp_servers.<id>.env` | map<string,string> | MCP server env vars. |
 | `mcp_servers.<id>.startup_timeout_sec` | number | Startup timeout in seconds (default: 10). Timeout is applied both for initializing MCP server and initially listing tools. |

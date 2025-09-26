@@ -13,8 +13,12 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as SerdeError;
 
+use crate::mcp_presets::find_mcp_server_preset;
 #[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct McpServerConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+
     pub command: String,
 
     #[serde(default)]
@@ -43,7 +47,10 @@ impl<'de> Deserialize<'de> for McpServerConfig {
     {
         #[derive(Deserialize)]
         struct RawMcpServerConfig {
-            command: String,
+            #[serde(default)]
+            preset: Option<String>,
+            #[serde(default)]
+            command: Option<String>,
             #[serde(default)]
             args: Vec<String>,
             #[serde(default)]
@@ -58,7 +65,17 @@ impl<'de> Deserialize<'de> for McpServerConfig {
 
         let raw = RawMcpServerConfig::deserialize(deserializer)?;
 
-        let startup_timeout_sec = match (raw.startup_timeout_sec, raw.startup_timeout_ms) {
+        let RawMcpServerConfig {
+            preset,
+            command,
+            args,
+            env,
+            startup_timeout_sec: raw_startup_timeout_sec,
+            startup_timeout_ms,
+            tool_timeout_sec,
+        } = raw;
+
+        let startup_timeout_override = match (raw_startup_timeout_sec, startup_timeout_ms) {
             (Some(sec), _) => {
                 let duration = Duration::try_from_secs_f64(sec).map_err(SerdeError::custom)?;
                 Some(duration)
@@ -67,12 +84,72 @@ impl<'de> Deserialize<'de> for McpServerConfig {
             (None, None) => None,
         };
 
+        let preset_config = match preset.as_deref() {
+            Some(preset_id) => {
+                let preset = find_mcp_server_preset(preset_id).ok_or_else(|| {
+                    SerdeError::custom(format!("unknown MCP server preset '{preset_id}'"))
+                })?;
+                Some(preset.to_config())
+            }
+            None => None,
+        };
+
+        let mut command_value = if let Some(cfg) = preset_config.as_ref() {
+            cfg.command.clone()
+        } else {
+            command
+                .clone()
+                .ok_or_else(|| SerdeError::missing_field("command"))?
+        };
+        if let Some(cmd) = command {
+            command_value = cmd;
+        }
+
+        let mut args_value = preset_config
+            .as_ref()
+            .map(|cfg| cfg.args.clone())
+            .unwrap_or_default();
+        if !args.is_empty() {
+            args_value = args;
+        }
+
+        let mut env_value = preset_config
+            .as_ref()
+            .and_then(|cfg| cfg.env.clone())
+            .unwrap_or_default();
+        if let Some(env_override) = env {
+            if env_value.is_empty() {
+                env_value = env_override;
+            } else {
+                for (key, value) in env_override {
+                    env_value.insert(key, value);
+                }
+            }
+        }
+
+        let mut startup_timeout_value = preset_config
+            .as_ref()
+            .and_then(|cfg| cfg.startup_timeout_sec);
+        if let Some(duration) = startup_timeout_override {
+            startup_timeout_value = Some(duration);
+        }
+
+        let mut tool_timeout_value = preset_config.as_ref().and_then(|cfg| cfg.tool_timeout_sec);
+        if let Some(duration) = tool_timeout_sec {
+            tool_timeout_value = Some(duration);
+        }
+
         Ok(Self {
-            command: raw.command,
-            args: raw.args,
-            env: raw.env,
-            startup_timeout_sec,
-            tool_timeout_sec: raw.tool_timeout_sec,
+            preset,
+            command: command_value,
+            args: args_value,
+            env: if env_value.is_empty() {
+                None
+            } else {
+                Some(env_value)
+            },
+            startup_timeout_sec: startup_timeout_value,
+            tool_timeout_sec: tool_timeout_value,
         })
     }
 }
@@ -302,4 +379,46 @@ pub enum ReasoningSummaryFormat {
     #[default]
     None,
     Experimental,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    #[test]
+    fn preset_expands_defaults() {
+        let cfg: McpServerConfig =
+            toml::from_str("preset = \"chrome_devtools\"\n").expect("valid preset config");
+
+        assert_eq!(cfg.preset.as_deref(), Some("chrome_devtools"));
+        assert_eq!(cfg.command, "npx");
+        assert_eq!(
+            cfg.args,
+            vec![
+                "chrome-devtools-mcp@latest".to_string(),
+                "--stdio".to_string()
+            ]
+        );
+        assert_eq!(cfg.startup_timeout_sec, Some(Duration::from_secs(45)));
+        assert_eq!(cfg.tool_timeout_sec, Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn preset_respects_overrides() {
+        let cfg: McpServerConfig = toml::from_str(
+            "preset = \"chrome_devtools\"\ncommand = \"/custom/bin\"\nargs = [\"--foo\"]\nenv = { CUSTOM = \"1\" }\nstartup_timeout_sec = 5\ntool_timeout_sec = 7\n",
+        )
+        .expect("valid override config");
+
+        assert_eq!(cfg.preset.as_deref(), Some("chrome_devtools"));
+        assert_eq!(cfg.command, "/custom/bin");
+        assert_eq!(cfg.args, vec!["--foo".to_string()]);
+        let mut expected_env = HashMap::new();
+        expected_env.insert("CUSTOM".to_string(), "1".to_string());
+        assert_eq!(cfg.env, Some(expected_env));
+        assert_eq!(cfg.startup_timeout_sec, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.tool_timeout_sec, Some(Duration::from_secs(7)));
+    }
 }
