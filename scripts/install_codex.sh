@@ -47,6 +47,18 @@ check_conflicting_codex() {
   fi
 }
 
+preinstall_mcp_package() {
+  echo
+  read -r -p "是否提前下载 chrome-devtools-mcp@latest？(Y/n): " install_choice || install_choice=""
+  install_choice=$(printf '%s' "${install_choice}" | tr '[:upper:]' '[:lower:]')
+  if [[ -z "${install_choice}" || "${install_choice}" == "y" ]]; then
+    echo "[信息] 正在执行 'npx --yes chrome-devtools-mcp@latest --version' 以预下载依赖……"
+    if ! npx --yes chrome-devtools-mcp@latest --version; then
+      echo "[警告] 预下载失败，首次使用 chrome_devtools 时仍会自动尝试下载。" >&2
+    fi
+  fi
+}
+
 ensure_dependencies() {
   local need_node=false
   for cmd in node npm npx; do
@@ -257,6 +269,7 @@ main() {
   build_or_download_binary
   check_conflicting_codex
   ensure_dependencies
+  preinstall_mcp_package
   choose_browser
   install_binary
   update_config
