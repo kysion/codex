@@ -34,6 +34,19 @@ try_install_with_brew() {
   fi
 }
 
+check_conflicting_codex() {
+  local existing
+  existing="$(command -v codex 2>/dev/null || true)"
+  if [[ -n "${existing}" && "${existing}" != "${INSTALL_PATH}" ]]; then
+    echo "[警告] 检测到系统中已有其它 codex (路径: ${existing})" >&2
+    if command -v brew >/dev/null 2>&1 && brew list --versions codex >/dev/null 2>&1; then
+      echo "        建议先执行 'brew unlink codex' 或 'brew uninstall codex' 以避免版本冲突。" >&2
+    else
+      echo "        请确认 PATH 中优先使用 ${INSTALL_PATH} (可通过别名或调整 PATH)。" >&2
+    fi
+  fi
+}
+
 ensure_dependencies() {
   local need_node=false
   for cmd in node npm npx; do
@@ -242,6 +255,7 @@ configure_env_exports() {
 main() {
   require_macos
   build_or_download_binary
+  check_conflicting_codex
   ensure_dependencies
   choose_browser
   install_binary
