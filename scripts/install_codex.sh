@@ -117,7 +117,7 @@ build_or_download_binary() {
 choose_browser() {
   echo "选择用于 MCP 的浏览器："
   read -r -p "[chrome/edge/custom] (默认 chrome): " browser_choice || browser_choice=""
-  browser_choice="${browser_choice,,}"
+  browser_choice=$(printf '%s' "${browser_choice}" | tr '[:upper:]' '[:lower:]')
   if [[ -z "${browser_choice}" ]]; then
     browser_choice="chrome"
   fi
