@@ -724,7 +724,8 @@ pub(crate) fn new_session_info(
             model,
             reasoning_effort,
             config.cwd.clone(),
-            crate::version::CODEX_CLI_VERSION,
+            crate::version::KYSION_BUILD_VERSION,
+            crate::version::OFFICIAL_BASE_VERSION,
         );
 
         // Help lines below the header (new copy and list)
@@ -800,7 +801,8 @@ pub(crate) fn new_active_exec_command(
 
 #[derive(Debug)]
 struct SessionHeaderHistoryCell {
-    version: &'static str,
+    kysion_version: &'static str,
+    base_version: &'static str,
     model: String,
     reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
@@ -811,10 +813,12 @@ impl SessionHeaderHistoryCell {
         model: String,
         reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
-        version: &'static str,
+        kysion_version: &'static str,
+        base_version: &'static str,
     ) -> Self {
         Self {
-            version,
+            kysion_version,
+            base_version,
             model,
             reasoning_effort,
             directory,
@@ -866,13 +870,15 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
 
-        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
-        let title_spans: Vec<Span<'static>> = vec![
-            Span::from(">_ ").dim(),
-            Span::from("OpenAI Codex").bold(),
-            Span::from(" ").dim(),
-            Span::from(format!("(v{})", self.version)).dim(),
-        ];
+        // Title lines rendered inside the box.
+        let title_spans: Vec<Span<'static>> =
+            vec![Span::from(">_ ").dim(), Span::from("OpenAI Codex").bold()];
+        let build_line = format!(
+            "Kysion Build v{}  ·  based on official v{}",
+            self.kysion_version, self.base_version
+        );
+        let build_spans: Vec<Span<'static>> =
+            vec![Span::from("  ").dim(), Span::from(build_line).dim()];
 
         const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
         const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
@@ -905,6 +911,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         let lines = vec![
             make_row(title_spans),
+            make_row(build_spans),
             make_row(Vec::new()),
             make_row(model_spans),
             make_row(dir_spans),
@@ -1769,7 +1776,8 @@ mod tests {
             "gpt-4o".to_string(),
             Some(ReasoningEffortConfig::High),
             std::env::temp_dir(),
-            "test",
+            "test-build",
+            "official-test",
         );
 
         let lines = render_lines(&cell.display_lines(80));

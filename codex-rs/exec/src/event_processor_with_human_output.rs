@@ -35,6 +35,15 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+const KYSION_BUILD_VERSION: &str = match option_env!("KYSION_BUILD_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+const OFFICIAL_BASE_VERSION: &str = match option_env!("KYSION_BASE_VERSION") {
+    Some(version) => version,
+    None => "0.41.0",
+};
+
 use crate::event_processor::CodexStatus;
 use crate::event_processor::EventProcessor;
 use crate::event_processor::handle_last_message;
@@ -142,11 +151,11 @@ impl EventProcessor for EventProcessorWithHumanOutput {
     /// for the session. This mirrors the information shown in the TUI welcome
     /// screen.
     fn print_config_summary(&mut self, config: &Config, prompt: &str, _: &SessionConfiguredEvent) {
-        const VERSION: &str = env!("CARGO_PKG_VERSION");
         ts_println!(
             self,
-            "OpenAI Codex v{} (research preview)\n--------",
-            VERSION
+            "OpenAI Codex\nKysion Build v{} · based on official v{}\n--------",
+            KYSION_BUILD_VERSION,
+            OFFICIAL_BASE_VERSION
         );
 
         let entries = create_config_summary_entries(config);

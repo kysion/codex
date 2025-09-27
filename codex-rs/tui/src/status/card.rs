@@ -2,7 +2,7 @@ use crate::history_cell::CompositeHistoryCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::with_border_with_inner_width;
-use crate::version::CODEX_CLI_VERSION;
+use crate::version::{KYSION_BUILD_VERSION, OFFICIAL_BASE_VERSION};
 use codex_common::create_config_summary_entries;
 use codex_core::config::Config;
 use codex_core::protocol::SandboxPolicy;
@@ -198,8 +198,14 @@ impl HistoryCell for StatusHistoryCell {
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
             Span::from("OpenAI Codex").bold(),
-            Span::from(" ").dim(),
-            Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
+        ]));
+        lines.push(Line::from(vec![
+            Span::from(format!("{}  ", FieldFormatter::INDENT)).dim(),
+            Span::from(format!(
+                "Kysion Build v{}  ·  based on official v{}",
+                KYSION_BUILD_VERSION, OFFICIAL_BASE_VERSION
+            ))
+            .dim(),
         ]));
         lines.push(Line::from(Vec::<Span<'static>>::new()));
 

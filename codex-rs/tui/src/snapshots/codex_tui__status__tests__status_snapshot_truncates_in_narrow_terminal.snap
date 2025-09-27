@@ -1,19 +1,21 @@
 ---
-source: tui/src/status.rs
+source: tui/src/status/tests.rs
+assertion_line: 223
 expression: sanitized
 ---
 /status
 
 ╭────────────────────────────────────────────╮
-│  >_ OpenAI Codex (v0.0.0)                  │
+│  >_ OpenAI Codex                           │
+│    Kysion Build v1.0.0  ·  based on offici │
 │                                            │
-│  Model       : gpt-5-codex (reasoning high │
-│  Directory   : /workspace/tests            │
-│  Approval    : on-request                  │
-│  Sandbox     : read-only                   │
-│  Agents.md   : <none>                      │
+│  Model:         gpt-5-codex (reasoning hig │
+│  Directory: [[workspace]]                  │
+│  Approval:      on-request                 │
+│  Sandbox:       read-only                  │
+│  Agents.md:     <none>                     │
 │                                            │
-│  Token Usage : 1.9K total  (1K input + 900 │
-│  5h limit    : [███████████████░░░░░] 72%  │
-│                · resets 03:14              │
+│  Token Usage:   1.9K total  (1K input + 90 │
+│  5h limit:      [███████████████░░░░░] 72% │
+│                 · resets 03:14             │
 ╰────────────────────────────────────────────╯
